@@ -1,0 +1,95 @@
+/**
+ * uni-app 全局样式变量
+ * 基于 Tailwind CSS 设计规范
+ */
+
+/* ========== 颜色变量 ========== */
+$primary-color: #3b82f6;
+$primary-hover: #2563eb;
+$primary-active: #1d4ed8;
+
+$success-color: #10b981;
+$warning-color: #f59e0b;
+$danger-color: #ef4444;
+$info-color: #06b6d4;
+
+/* 背景色 */
+$bg-primary: #0c0a15;
+$bg-secondary: #1a1625;
+$bg-card: rgba(17, 24, 39, 0.8);
+$bg-hover: rgba(59, 130, 246, 0.1);
+
+/* 文字颜色 */
+$text-primary: #e2e8f0;
+$text-secondary: #94a3b8;
+$text-muted: #64748b;
+$text-white: #ffffff;
+
+/* 边框颜色 */
+$border-color: rgba(71, 85, 105, 0.2);
+$border-hover: rgba(59, 130, 246, 0.3);
+
+/* ========== 间距变量 ========== */
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-2xl: 48px;
+
+/* ========== 字体大小 ========== */
+$font-xs: 12px;
+$font-sm: 14px;
+$font-base: 16px;
+$font-lg: 18px;
+$font-xl: 20px;
+$font-2xl: 24px;
+$font-3xl: 30px;
+$font-4xl: 36px;
+
+/* ========== 圆角 ========== */
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 16px;
+$radius-2xl: 24px;
+$radius-full: 9999px;
+
+/* ========== 阴影 ========== */
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+$shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+$shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.25);
+
+/* ========== 过渡动画 ========== */
+$transition-fast: 0.15s;
+$transition-base: 0.3s;
+$transition-slow: 0.5s;
+
+/* ========== Z-index 层级 ========== */
+$z-index-dropdown: 1000;
+$z-index-sticky: 1020;
+$z-index-fixed: 1030;
+$z-index-modal-backdrop: 1040;
+$z-index-modal: 1050;
+$z-index-popover: 1060;
+$z-index-tooltip: 1070;
+
+/* ========== 断点 ========== */
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+
+/* ========== 自定义主题色 ========== */
+$gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+$gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+$gradient-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+$gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+
+/* ========== 模糊效果 ========== */
+$blur-sm: 4px;
+$blur-md: 8px;
+$blur-lg: 12px;
+$blur-xl: 16px;

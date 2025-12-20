@@ -1,0 +1,105 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    },
+    {
+      "path": "pages/analysis/analysis",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    },
+    {
+      "path": "pages/analysis/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    },
+    {
+      "path": "pages/plans/plans",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    },
+    {
+      "path": "pages/plans/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    },
+    {
+      "path": "pages/monitor/monitor",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    },
+    {
+      "path": "pages/profile/profile",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#0c0a15"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "Sword Edge",
+    "navigationBarBackgroundColor": "#0c0a15",
+    "backgroundColor": "#0c0a15",
+    "color": "#ffffff"
+  },
+  "tabBar": {
+    "color": "#94a3b8",
+    "selectedColor": "#3b82f6",
+    "backgroundColor": "#1a1625",
+    "borderStyle": "none",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "static/icons/home.png",
+        "selectedIconPath": "static/icons/home-active.png"
+      },
+      {
+        "pagePath": "pages/analysis/analysis",
+        "text": "分析",
+        "iconPath": "static/icons/analysis.png",
+        "selectedIconPath": "static/icons/analysis-active.png"
+      },
+      {
+        "pagePath": "pages/monitor/monitor",
+        "text": "监测",
+        "iconPath": "static/icons/monitor.png",
+        "selectedIconPath": "static/icons/monitor-active.png"
+      },
+      {
+        "pagePath": "pages/plans/plans",
+        "text": "计划",
+        "iconPath": "static/icons/plans.png",
+        "selectedIconPath": "static/icons/plans-active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的",
+        "iconPath": "static/icons/profile.png",
+        "selectedIconPath": "static/icons/profile-active.png"
+      }
+    ]
+  }
+}

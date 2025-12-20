@@ -1,0 +1,10 @@
+{
+  "navigationBarTitleText": "训练计划",
+  "navigationBarBackgroundColor": "#0c0a15",
+  "navigationBarTextStyle": "white",
+  "usingComponents": {
+    "se-card": "../../components/se-card/se-card",
+    "se-button": "../../components/se-button/se-button",
+    "se-progress": "../../components/se-progress/se-progress"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "sword-edge",
+  "version": "1.0.0",
+  "description": "智能剑术训练分析与指导系统",
+  "author": "SwordEdge Team",
+  "license": "MIT",
+  "scripts": {
+    "dev:h5": "uni dev h5",
+    "build:h5": "uni build h5",
+    "dev:mp-weixin": "uni dev mp-weixin",
+    "build:mp-weixin": "uni build mp-weixin",
+    "dev:mp-alipay": "uni dev mp-alipay",
+    "build:mp-alipay": "uni build mp-alipay",
+    "dev:app": "uni dev app",
+    "build:app": "uni build app"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "^3.0.0-alpha-4080720251125001",
+    "@dcloudio/uni-components": "^3.0.0-alpha-3000020210521001",
+    "socket.io-client": "^4.8.1",
+    "vue": "^3.2.45"
+  },
+  "devDependencies": {
+    "sass": "^1.64.0",
+    "sass-loader": "^13.3.0"
+  },
+  "uni-app": {
+    "scripts": {}
+  }
+}
