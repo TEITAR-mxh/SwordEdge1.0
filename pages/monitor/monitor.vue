@@ -1,55 +1,43 @@
 <template>
-  <view class="page-monitor app-background">
-    <!-- 摄像头预览区 -->
-    <view class="camera-section">
-      <!-- #ifdef H5 -->
-      <video
-        v-if="cameraEnabled"
-        ref="cameraVideo"
-        class="camera-preview"
-        autoplay
-        playsinline
-        muted
-      ></video>
-      <!-- H5 用于绘制骨架覆盖层 -->
-      <canvas v-if="cameraEnabled" ref="cameraCanvas" class="camera-preview" style="position:absolute;left:0;top:0;pointer-events:none;"></canvas>
-      <!-- #endif -->
-      
-      <!-- #ifndef H5 -->
-      <camera
-        v-if="cameraEnabled"
-        device-position="back"
-        flash="off"
-        :frame-size="frameSize"
-        class="camera-preview"
-        @error="handleCameraError"
-      >
-        <!-- 骨架overlay叠加层 -->
-        <canvas
-          v-if="showSkeleton"
-          canvas-id="skeletonCanvas"
-          class="skeleton-canvas"
-        ></canvas>
-      </camera>
-      <!-- #endif -->
-
-      <!-- 相机未启用时显示 -->
-      <view v-else class="camera-placeholder">
-        <text class="placeholder-icon">📷</text>
-        <text class="placeholder-text">摄像头未启用</text>
-        <se-button type="primary" text="启用摄像头" @click="enableCamera" />
-      </view>
-
-      <!-- 状态指示器 -->
-      <view class="status-bar">
-        <view class="status-item">
-          <view class="status-dot" :class="{ active: isMonitoring }"></view>
-          <text class="status-text">{{ isMonitoring ? '监控中' : '未监控' }}</text>
-        </view>
-        <view class="status-item">
-          <text class="status-fps">{{ currentFPS }} FPS</text>
-        </view>
-      </view>
+<view class="page-monitor">
+  <view class="camera-section">
+    <video
+      v-if="cameraEnabled"
+      ref="cameraVideo"
+      class="camera-preview"
+      autoplay
+      muted
+      playsinline
+      webkit-playsinline="true"
+    ></video>
+    
+    <canvas 
+      v-if="cameraEnabled" 
+      ref="cameraCanvas" 
+      canvas-id="cameraCanvas"
+      class="camera-preview" 
+      style="position:absolute; left:0; top:0; pointer-events:none; z-index:10;"
+    ></canvas>
+    <camera
+      v-if="cameraEnabled"
+      device-position="back"
+      flash="off"
+      :frame-size="frameSize"
+      class="camera-preview"
+      @error="handleCameraError"
+    >
+      <canvas
+        v-if="showSkeleton"
+        canvas-id="skeletonCanvas"
+        class="skeleton-canvas"
+      ></canvas>
+    </camera>
+    <view v-else class="camera-placeholder">
+      <text class="placeholder-icon">📷</text>
+      <text class="placeholder-text">摄像头未启用</text>
+      <se-button type="primary" text="启用摄像头" @click="enableCamera" />
+    </view>
+  
     </view>
 
     <!-- 实时数据面板 -->
@@ -153,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { monitorAPI, analysisAPI } from '@/utils/api.js'
 import { createWebSocket } from '@/utils/request.js'
 import { getConfidenceType } from '@/utils/common.js'
@@ -167,7 +155,7 @@ const frameSize = ref('medium')
 const showSkeleton = ref(true)
 const cameraVideo = ref(null)
 const cameraCanvas = ref(null)
-
+const cameraError = ref(null)
 // 监控状态
 const isMonitoring = ref(false)
 const currentFPS = ref(0)
@@ -189,6 +177,8 @@ const keyMetrics = ref([
 const recognitionCount = ref(0)
 const recognizedActions = ref([])
 
+const lastLoggedAction = ref("");
+let activeStream = null;
 // WebSocket 连接
 let wsClient = null
 
@@ -218,92 +208,99 @@ onUnmounted(() => {
 })
 
 // 请求摄像头权限
-const requestCameraPermission = () => {
+const requestCameraPermission = async () => {
   // #ifdef H5
-  // H5 平台需要使用 navigator.mediaDevices.getUserMedia 请求权限
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    navigator.mediaDevices.getUserMedia({
+  // 1. 检查浏览器环境是否支持
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const isNotHttps = window.location.protocol !== 'https:' && window.location.hostname !== 'localhost';
+    uni.showModal({
+      title: '环境不支持',
+      content: isNotHttps ? '由于浏览器安全策略，非 HTTPS 环境无法调用摄像头，请切换至 HTTPS 访问。' : '您的浏览器不支持访问摄像头。',
+      showCancel: false
+    });
+    return;
+  }
+
+  try {
+    // 2. 停止旧的流（如果存在），防止设备占用
+    if (window.cameraStream) {
+      window.cameraStream.getTracks().forEach(track => track.stop());
+    }
+
+    // 3. 正式请求媒体流
+    const stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: 'environment',
-        width: 1280,
-        height: 720
+        facingMode: 'user', // 或 'environment' (后置)
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
       },
       audio: false
-    })
-    .then(stream => {
-      cameraEnabled.value = true
-      // 保存摄像头流，用于后续处理
-      window.cameraStream = stream
-      // 将摄像头流赋值给video元素
-      setTimeout(() => {
-        if (cameraVideo.value) {
-          try {
-            cameraVideo.value.srcObject = stream
-            // 在某些浏览器/环境下需要手动调用 play()
-            const p = cameraVideo.value.play()
-            if (p && typeof p.then === 'function') {
-              p.catch(err => {
-                console.warn('视频播放被阻止或不支持自动播放:', err)
-              })
-            }
-          } catch (err) {
-            console.warn('设置摄像头流到 video 元素失败:', err)
-          }
-        }
-      }, 100)
-    })
-    .catch(err => {
-      console.error('获取摄像头权限失败:', err)
-      // 更详细的提示，包含可能的原因与解决方式
-      const reason = err && err.name ? `${err.name}: ${err.message}` : (err && err.message ? err.message : '')
-      uni.showModal({
-        title: '需要摄像头权限',
-        content: `无法访问摄像头。可能原因：未授权或浏览器阻止访问。请确保页面在 HTTPS 下并在地址栏允许摄像头访问。详情：${reason}`,
-        confirmText: '知道了',
-        showCancel: false
-      })
-    })
-  } else {
+    });
+
+    // 4. 存储流并更新 UI 状态
+    window.cameraStream = stream;
+    //cameraEnabled.value = true;
+
+    // // 5. 立即绑定到 video 元素
+    // await nextTick();
+    // // 兼容处理：获取 video 节点
+    // const videoEl = cameraVideo.value?.$el?.querySelector('video') || cameraVideo.value;
+    
+    // if (videoEl) {
+    //   videoEl.srcObject = stream;
+    //   // 处理某些浏览器必须手动触发播放的情况
+    //   videoEl.onloadedmetadata = () => {
+    //     videoEl.play().catch(e => console.warn('自动播放被拦截:', e));
+    //   };
+    // }
+    
+    uni.showToast({ title: '摄像头已就绪', icon: 'success' });
+
+  } catch (err) {
+    console.error('摄像头授权失败详情:', err);
+    let errorMsg = '无法访问摄像头';
+    
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      errorMsg = '权限被拒绝，请在地址栏点击锁形图标重新授权';
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      errorMsg = '未找到摄像头设备';
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      errorMsg = '摄像头可能被其他程序（如微信、腾讯会议）占用';
+    }
+
     uni.showModal({
-      title: '浏览器不支持',
-      content: '您的浏览器不支持摄像头功能',
-      confirmText: '知道了',
+      title: '授权失败',
+      content: errorMsg,
       showCancel: false
-    })
+    });
+    cameraEnabled.value = false;
   }
   // #endif
 
   // #ifndef H5
-  // App 和小程序平台使用 authorize
-  if (typeof uni.authorize === 'function') {
-    uni.authorize({
-      scope: 'scope.camera',
-      success: () => {
-        cameraEnabled.value = true
-      },
-      fail: () => {
-        uni.showModal({
-          title: '需要摄像头权限',
-          content: '请在设置中开启摄像头权限以使用实时监控功能',
-          confirmText: '去设置',
-          success: (res) => {
-            if (res.confirm) {
-              uni.openSetting()
-            }
-          }
-        })
-      }
-    })
-  } else {
-    // 降级处理
-    cameraEnabled.value = true
-  }
+  // App/小程序 保持原有的 authorize 逻辑
+  uni.authorize({
+    scope: 'scope.camera',
+    success: () => {
+      cameraEnabled.value = true;
+    },
+    fail: () => {
+      uni.showModal({
+        title: '需要摄像头权限',
+        content: '请在系统设置中开启摄像头权限',
+        confirmText: '去设置',
+        success: (res) => {
+          if (res.confirm) uni.openSetting();
+        }
+      });
+    }
+  });
   // #endif
 }
 
 // 启用摄像头
 const enableCamera = () => {
-  requestCameraPermission()
+  startMonitoring()
 }
 
 // 摄像头错误处理
@@ -315,79 +312,97 @@ const handleCameraError = (error) => {
   })
 }
 
+// 定义一个持久化的离屏 canvas，避免频繁创建销毁导致的内存溢出
+let offscreenCanvas = null;
+let offscreenCtx = null;
 // 开始监控
 const startMonitoring = async () => {
-  cameraEnabled.value = false
-  cameraError.value = null
+  if (isMonitoring.value) return;
+  console.log('正在启动监控系统...');
+  
+  uni.showLoading({ title: '算法加载中...', mask: true });
+
   try {
-    uni.showLoading({ title: '启动监控中...' })
-
-    // 如果已有流，先停止
-    if (window.cameraStream) {
-      try { window.cameraStream.getTracks().forEach(t=>t.stop()) } catch(e){}
-      window.cameraStream = null
+    // 1. 确保已经获取了流 (但此时流只是存在内存里，没挂载到 DOM)
+    if (!window.cameraStream) {
+      await requestCameraPermission();
     }
 
-    // H5: 直接打开摄像头并展示
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 1280, height: 720 }, audio: false })
-        window.cameraStream = stream
-        cameraEnabled.value = true
-        // 赋值给 video 元素并尝试播放
-        setTimeout(() => {
-          if (cameraVideo.value) {
-            cameraVideo.value.srcObject = stream
-            try { const p = cameraVideo.value.play(); if (p && typeof p.then === 'function') p.catch(()=>{}) } catch(e){}
-          }
-        }, 50)
-      } catch (err) {
-        console.error('获取摄像头失败:', err)
-        cameraError.value = err.message || String(err)
-        uni.hideLoading()
-        return
+    // 2. 开启 UI 渲染 (让 v-if 生成 video 标签)
+    cameraEnabled.value = true;
+    await nextTick(); // 必须等待 DOM 更新
+
+    // 3. 获取刚刚生成的 Video 元素
+    const videoEl = cameraVideo.value?.$el?.querySelector('video') || 
+                    cameraVideo.value?.$el || 
+                    document.querySelector('.camera-section video');
+
+    if (!videoEl) throw new Error('找不到预览视频组件');
+
+    // 4. 【关键：重新挂载流】
+    // 必须在这里把之前拿到的 stream 重新赋值给新创建的 video 元素
+    videoEl.srcObject = window.cameraStream;
+    videoEl.muted = true;
+    videoEl.setAttribute('playsinline', 'true');
+
+    // 5. 等待视频元数据加载，否则 play() 会报错
+    await new Promise((resolve) => {
+      if (videoEl.readyState >= 2) {
+        resolve();
+      } else {
+        videoEl.onloadedmetadata = () => resolve();
+        // 设置 2 秒超时防止死锁
+        setTimeout(resolve, 2000);
       }
+    });
+
+    // 6. 执行播放
+    try {
+      await videoEl.play();
+    } catch (playErr) {
+      console.warn("自动播放失败，尝试通过点击事件恢复:", playErr);
+      // 这里的兜底逻辑保持
+      document.body.addEventListener('click', () => videoEl.play(), { once: true });
     }
 
-    // 通知后端启动监控（轻量）
-    try { await monitorAPI.startMonitor({}, { showLoading: false }) } catch(e) { console.warn('monitorAPI.startMonitor failed', e) }
+    // 7. 启动分析循环
+    isMonitoring.value = true;
+    startAnalysisLoop(videoEl);
 
-    isMonitoring.value = true
-    currentFPS.value = 30
-
-    // 初始化 WebSocket 连接（用于接收 frame 或其他实时数据）
-    if (!wsClient) {
-      wsClient = createWebSocket('/')
-      try {
-        await wsClient.connect()
-        wsClient.onMessage((data) => handleRealtimeData(data))
-      } catch (e) {
-        console.warn('ws connect failed', e)
-      }
-    }
-
-    // 每 500ms 抓取一帧并发送到后端分析（作为实时分析通道）
-    if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null }
-    analysisTimer = setInterval(async () => {
-      try {
-        if (cameraVideo.value && cameraVideo.value.readyState >= 2) {
-          await sendFrameToBackend(cameraVideo.value)
-        }
-      } catch (e) {
-        console.warn('sendFrameToBackend error', e)
-      }
-    }, 500)
-
-    uni.hideLoading()
-    uni.showToast({ title: '监控已启动', icon: 'success' })
-
-  } catch (error) {
-    console.error('启动监控失败:', error)
-    try { uni.hideLoading() } catch(e){}
-    uni.showToast({ title: '启动失败', icon: 'none' })
+  } catch (err) {
+    console.error('监控启动失败:', err);
+    cameraEnabled.value = false; // 失败了就切回占位状态
+    uni.showModal({ title: '启动失败', content: err.message, showCancel: false });
+  } finally {
+    uni.hideLoading();
   }
-}
+};
 
+/**
+ * 抽离出的分析循环逻辑
+ */
+let isProcessing = false;
+const startAnalysisLoop = (videoEl) => {
+  if (analysisTimer) clearInterval(analysisTimer);
+
+  analysisTimer = setInterval(async () => {
+    // 状态检查
+    if (!isMonitoring.value || videoEl.paused || videoEl.ended || isProcessing) {
+      return;
+    }
+    
+    isProcessing = true; // 加锁，防止上一帧没传完下一帧就开始了
+    try {
+      if (videoEl.videoWidth > 0) {
+        await sendFrameToBackend(videoEl);
+      }
+    } catch (e) {
+      console.error('循环执行出错:', e);
+    } finally {
+      isProcessing = false; // 释放锁
+    }
+  }, 200); // 建议设为 200ms (5FPS)，兼顾实时性与性能
+};
 // 停止监控
 const stopMonitoring = async () => {
   try {
@@ -428,53 +443,54 @@ const stopMonitoring = async () => {
 }
 
 // 处理实时数据
+
 const handleRealtimeData = (data) => {
-  // 更新评分
-  if (data.score !== undefined) {
-    const oldScore = realtimeScore.value
-    realtimeScore.value = data.score
-
-    // 更新趋势
-    if (data.score > oldScore + 2) {
-      scoreTrend.value = 'up'
-      scoreTrendText.value = '上升'
-    } else if (data.score < oldScore - 2) {
-      scoreTrend.value = 'down'
-      scoreTrendText.value = '下降'
-    } else {
-      scoreTrend.value = 'stable'
-      scoreTrendText.value = '稳定'
-    }
+  // 1. 基础校验：如果没有动作数据，直接尝试更新评分后退出
+  if (!data || !data.action || !data.action.name) {
+    if (data && data.score !== undefined) realtimeScore.value = Math.round(data.score);
+    return;
   }
 
-  // 更新关键指标
-  if (data.metrics) {
-    keyMetrics.value = data.metrics
+  // 2. 预处理
+  const newActionName = data.action.name.trim();
+  
+  // 3. 过滤：如果是系统中间提示语，直接无视（不记录、不拦截）
+  const ignoreList = ["分析中", "识别中", "未知", "动态调整", "姿态识别中"];
+  const shouldIgnore = ignoreList.some(word => newActionName.includes(word));
+  if (shouldIgnore) return;
+
+  // 4. 【核心去重】：如果新动作名等于上一次记录的名，说明动作没变
+  if (newActionName === lastLoggedAction.value) {
+    // 动作没变时，我们只更新实时数值（评分、指标），但不去碰列表数组
+    if (data.score !== undefined) realtimeScore.value = Math.round(data.score);
+    if (data.posture_metrics) updateMetricsUI(data.posture_metrics);
+    return; // 结束函数，不执行下面的 unshift
   }
 
-  // 更新动作识别
-  if (data.action) {
-    recognizedActions.value.unshift({
-      id: Date.now(),
-      time: new Date().toLocaleTimeString(),
-      name: data.action.name,
-      confidence: data.action.confidence
-    })
+  // 5. 执行到这里，说明【动作真的变了】
+  console.log("动作状态变更:", lastLoggedAction.value, "->", newActionName);
+  
+  // 更新状态锁
+  lastLoggedAction.value = newActionName;
 
-    // 限制列表长度
-    if (recognizedActions.value.length > 20) {
-      recognizedActions.value.pop()
-    }
+  // 6. 向列表添加新记录
+  recognizedActions.value.unshift({
+    id: Date.now(), // 唯一ID
+    time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+    name: newActionName,
+    confidence: Math.round((data.action.confidence || 0) * 100)
+  });
 
-    recognitionCount.value = recognizedActions.value.length
+  // 7. 维护列表长度和计数
+  if (recognizedActions.value.length > 10) {
+    recognizedActions.value.pop();
   }
+  recognitionCount.value = recognizedActions.value.length;
 
-  // 更新 FPS
-  if (data.fps) {
-    currentFPS.value = data.fps
-  }
-}
-
+  // 8. 更新其他实时数值
+  if (data.score !== undefined) realtimeScore.value = Math.round(data.score);
+  if (data.posture_metrics) updateMetricsUI(data.posture_metrics);
+};
 // 截图分析
 const captureFrame = () => {
   const ctx = uni.createCameraContext()
@@ -517,80 +533,156 @@ const captureFrame = () => {
 }
 
 /**
- * 发送当前视频帧到后端进行单帧分析（H5）
+ * 发送当前视频帧到后端
  */
-async function sendFrameToBackend(video) {
+async function sendFrameToBackend(videoSource) {
   try {
-    // 创建临时 canvas 捕获当前帧
-    const tmp = document.createElement('canvas')
-    tmp.width = video.videoWidth || 640
-    tmp.height = video.videoHeight || 480
-    const tctx = tmp.getContext('2d')
-    tctx.drawImage(video, 0, 0, tmp.width, tmp.height)
+    // 1. 获取原生 VIDEO 标签
+    const videoEl = (videoSource instanceof HTMLVideoElement) 
+      ? videoSource 
+      : (videoSource?.$el?.querySelector('video') || document.querySelector('video'));
 
-    const blob = await new Promise(resolve => tmp.toBlob(resolve, 'image/jpeg', 0.8))
-    if (!blob) return
+    if (!videoEl || videoEl.readyState < 2) return;
 
-    const form = new FormData()
-    form.append('frame', blob, 'frame.jpg')
+    // 2. 离屏绘制
+    const captureCanvas = document.createElement('canvas');
+    captureCanvas.width = videoEl.videoWidth;
+    captureCanvas.height = videoEl.videoHeight;
+    const tctx = captureCanvas.getContext('2d', { willReadFrequently: true });
+    tctx.drawImage(videoEl, 0, 0, captureCanvas.width, captureCanvas.height);
 
-    const resp = await fetch('http://127.0.0.1:5001/api/analyze_frame', { method: 'POST', body: form })
-    if (!resp.ok) {
-      console.warn('analyze_frame failed', resp.status)
-      return
-    }
+    // 3. 转换为 Blob
+    const blob = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/jpeg', 0.6));
+    if (!blob) return;
 
-    const data = await resp.json()
-    // 兼容后端返回格式
+    const form = new FormData();
+    form.append('frame', blob, 'frame.jpg');
+
+    // 4. 请求后端
+    const resp = await fetch('http://127.0.0.1:5001/api/analyze_frame', { 
+      method: 'POST', 
+      body: form 
+    });
+    
+    if (!resp.ok) throw new Error(`HTTP 错误: ${resp.status}`);
+    const data = await resp.json();
+
+    // --- 重点：数据分发 ---
     if (data && data.success) {
-      // 更新 UI
-      realtimeScore.value = Math.round(data.score || realtimeScore.value)
-      if (data.metrics) {
-        // 试图把后端 metrics 映射为前端 keyMetrics
-        try {
-          keyMetrics.value[0].value = (data.metrics['姿态角度'] || data.metrics['头部位置'] || keyMetrics.value[0].value) + '°'
-          keyMetrics.value[1].value = (data.metrics['速度'] || keyMetrics.value[1].value) + ' m/s'
-          keyMetrics.value[2].value = (data.metrics['姿态准确度'] || keyMetrics.value[2].value) + '%'
-        } catch(e){}
+      // A. 调用你现有的 handleRealtimeData 处理评分和动作列表
+      handleRealtimeData(data);
+      
+      // B. 更新侧边栏/底部的详细指标 (注意后端字段是 posture_metrics)
+      if (data.posture_metrics) {
+        updateMetricsUI(data.posture_metrics);
       }
-
-      // 绘制关键点（如果返回 keypoints）
-      if (cameraCanvas.value && data.keypoints) {
-        const canvas = cameraCanvas.value
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        const ctx = canvas.getContext('2d')
-        ctx.clearRect(0,0,canvas.width,canvas.height)
-        drawKeypoints(ctx, data.keypoints, canvas.width, canvas.height)
-      }
+      
+      // C. 绘制骨架
+      drawSkeletonOverlay(videoEl, data.keypoints);
     } else {
-      // 未检测到人体
-      if (cameraCanvas.value) {
-        const ctx = cameraCanvas.value.getContext('2d')
-        ctx.clearRect(0,0,cameraCanvas.value.width,cameraCanvas.value.height)
-      }
+      clearSkeletonCanvas();
     }
   } catch (e) {
-    console.warn('sendFrameToBackend exception', e)
+    console.error('监控循环出错:', e);
   }
 }
+/**
+ * 辅助函数：更新 UI 指标
+ */
+function updateMetricsUI(metrics) {
+  if (!metrics) return;
+  keyMetrics.value[0].value = (metrics['姿态角度'] || metrics['angle'] || '0') + '°';
+  keyMetrics.value[1].value = (metrics['速度'] || metrics['speed'] || '0') + ' m/s';
+  keyMetrics.value[2].value = (metrics['精准度'] || metrics['accuracy'] || '0') + '%';
+  keyMetrics.value[3].value = (metrics['力量指数'] || metrics['power'] || '0');
+}
 
+/**
+ * 辅助函数：绘制骨架
+ */
+function drawSkeletonOverlay(video, keypoints) {
+  // 1. 获取 Canvas 节点
+  let canvas = cameraCanvas.value?.$el;
+  if (canvas && canvas.tagName !== 'CANVAS') {
+    canvas = canvas.querySelector('canvas');
+  }
+  if (!canvas) {
+    canvas = document.querySelector('.camera-section canvas');
+  }
+
+  if (!canvas || !canvas.getContext) return;
+
+  // 2. 这里的 ctx 只定义一次
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  // 3. 同步尺寸
+  if (canvas.width !== video.videoWidth) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  }
+
+  // 4. 清除上一帧
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  
+
+  // 6. 执行原本的绘图逻辑
+  if (keypoints) {
+    drawKeypoints(ctx, keypoints, canvas.width, canvas.height);
+  }
+}
+/**
+ * 辅助函数：清空画布
+ */
+function clearSkeletonCanvas() {
+  const canvas = cameraCanvas.value?.$el || cameraCanvas.value;
+  if (canvas && typeof canvas.getContext === 'function') {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
 function drawKeypoints(ctx, keypoints, width, height) {
-  if (!keypoints || !ctx) return
-  ctx.save()
-  ctx.fillStyle = 'rgba(34,197,94,0.9)'
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)'
-  ctx.lineWidth = 2
-  for (let i=0;i<keypoints.length;i++) {
-    const p = keypoints[i]
-    // 如果后端使用 normalized coords (0..1)，尝试兼容
-    let x = p.x, y = p.y
-    if (x <= 1 && y <= 1) { x = x * width; y = y * height }
-    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke()
-  }
-  ctx.restore()
-}
+  if (!keypoints || !ctx || keypoints.length === 0) return;
+  
+  ctx.save();
+  
+  // 1. 定义连线关系 (MediaPipe/YOLO 标准 17 点位)
+  const connections = [
+    [5, 6], [5, 7], [7, 9], [6, 8], [8, 10], // 上半身
+    [11, 12], [5, 11], [6, 12],              // 躯干
+    [11, 13], [13, 15], [12, 14], [14, 16]   // 下半身
+  ];
 
+  // 2. 绘制连线
+  ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)'; // 绿色连线
+  ctx.lineWidth = 3;
+  connections.forEach(([i, j]) => {
+    const kp1 = keypoints[i];
+    const kp2 = keypoints[j];
+    if (kp1 && kp2 && kp1.confidence > 0.5 && kp2.confidence > 0.5) {
+      ctx.beginPath();
+      ctx.moveTo(kp1.x * (kp1.x <= 1 ? width : 1), kp1.y * (kp1.y <= 1 ? height : 1));
+      ctx.lineTo(kp2.x * (kp2.x <= 1 ? width : 1), kp2.y * (kp2.y <= 1 ? height : 1));
+      ctx.stroke();
+    }
+  });
+
+  // 3. 绘制关键点
+  ctx.fillStyle = '#3b82f6'; // 蓝色关节点
+  ctx.strokeStyle = '#ffffff';
+  keypoints.forEach(p => {
+    if (p.confidence > 0.5) {
+      let x = p.x * (p.x <= 1 ? width : 1);
+      let y = p.y * (p.y <= 1 ? height : 1);
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  });
+
+  ctx.restore();
+}
 
 
 // 模拟数据更新（开发阶段）
@@ -638,13 +730,32 @@ const startDataSimulation = () => {
   position: relative;
   width: 100%;
   height: 500rpx;
+  min-height: 300px;
   background: #000000;
   margin-bottom: 24rpx;
+  overflow: hidden;
 }
 
-.camera-preview {
+
+
+video.camera-preview {
   width: 100%;
   height: 100%;
+  display: block;
+  object-fit: cover; /* 关键：确保画面撑满容器 */
+  z-index: 1;
+}
+
+canvas.camera-preview {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 10; /* 确保在视频上方 */
+  pointer-events: none; /* 穿透点击事件 */
+  background: transparent !important;
+  background-color: transparent !important; /* 必须是透明，否则会挡住视频 */
 }
 
 .skeleton-canvas {
@@ -654,6 +765,7 @@ const startDataSimulation = () => {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  background: transparent;
 }
 
 .camera-placeholder {

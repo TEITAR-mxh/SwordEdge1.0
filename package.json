@@ -17,10 +17,12 @@
   "dependencies": {
     "@dcloudio/uni-app": "^3.0.0-alpha-4080720251125001",
     "@dcloudio/uni-components": "^3.0.0-alpha-3000020210521001",
+    "marked": "^4.3.0",
     "socket.io-client": "^4.8.1",
     "vue": "^3.2.45"
   },
   "devDependencies": {
+    "@babel/plugin-proposal-unicode-property-regex": "^7.18.6",
     "sass": "^1.64.0",
     "sass-loader": "^13.3.0"
   },

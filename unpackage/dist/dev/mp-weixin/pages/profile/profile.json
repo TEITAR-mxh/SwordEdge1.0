@@ -1,8 +1,0 @@
-{
-  "navigationBarTitleText": "我的",
-  "navigationBarBackgroundColor": "#0c0a15",
-  "navigationBarTextStyle": "white",
-  "usingComponents": {
-    "se-card": "../../components/se-card/se-card"
-  }
-}

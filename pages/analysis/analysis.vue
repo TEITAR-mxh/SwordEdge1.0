@@ -97,16 +97,24 @@
 
     <!-- 分析结果 -->
     <view v-else class="results-section">
-      <!-- 视频预览 -->
       <se-card title="训练视频">
         <view class="video-container">
           <video
+            v-if="videoUrl"
+            :key="videoUrl"
             :src="videoUrl"
             controls
+            :autoplay="true"
             :show-center-play-btn="true"
             :enable-progress-gesture="true"
             class="video-player"
+            style="width: 100%; height: 400rpx; border-radius: 12rpx;"
+            @error="onVideoError"
           ></video>
+          
+          <view v-else class="loading-video">
+            <text>正在加载 AI 处理后的视频...</text>
+          </view>
         </view>
       </se-card>
 
@@ -196,25 +204,18 @@
       </se-card>
 
       <!-- AI 教练反馈 -->
-      <se-card title="AI 教练反馈" variant="gradient" class="mt-4">
-        <view class="coach-feedback">
-          <view class="coach-avatar">
-            <text class="coach-icon">🤖</text>
-          </view>
-          <view class="feedback-content">
-            <text class="feedback-text">{{ coachFeedback }}</text>
-          </view>
-        </view>
-
-        <view class="suggestions">
-          <text class="suggestions-title">改进建议</text>
-          <view class="suggestion-item" v-for="(suggestion, index) in suggestions" :key="index">
-            <text class="suggestion-bullet">•</text>
-            <text class="suggestion-text">{{ suggestion }}</text>
-          </view>
-        </view>
-      </se-card>
-
+     <se-card title="AI 教练深度诊断" variant="gradient" class="mt-4">
+       <view class="coach-feedback">
+         <view class="coach-avatar">
+           <text class="coach-icon">🤖</text>
+           <view v-if="isAiLoading" class="loading-text">正在生成专业建议...</view>
+         </view>
+         
+         <view class="feedback-content">
+           <rich-text :nodes="renderedFeedback" class="markdown-display"></rich-text>
+         </view>
+       </view>
+     </se-card>
       <!-- 操作按钮 -->
       <view class="action-buttons safe-area-inset-bottom">
         <se-button
@@ -251,6 +252,11 @@ import { getCircleProgressStyle, getStarCount, getScoreComment, getMetricType, f
 import SeCard from '@/components/se-card/se-card.vue'
 import SeButton from '@/components/se-button/se-button.vue'
 import SeProgress from '@/components/se-progress/se-progress.vue'
+import { marked } from 'marked'; 
+
+// --- 状态变量 (由 ref 定义) ---
+const coachFeedback = ref("")  // 存放原始 Markdown 文本
+const isAiLoading = ref(false)
 
 // 上传状态
 const selectedFile = ref(null)
@@ -279,7 +285,6 @@ const analysisDate = ref('')
 const overallScore = ref(0)
 const detailedMetrics = ref([])
 const detectedActions = ref([])
-const coachFeedback = ref('')
 const suggestions = ref([])
 
 // 历史记录
@@ -289,11 +294,28 @@ const recentAnalysis = ref([
   { id: 3, title: '姿态矫正', date: '2025-12-15 16:00', score: 78 }
 ])
 
+// --- 计算属性 ---
+
+// 将 Markdown 转换为 rich-text 能识别的格式
+const renderedFeedback = computed(() => {
+  if (isAiLoading.value) return '<p style="color:#94a3b8">AI 教练正在生成诊断报告...</p>';
+  if (!coachFeedback.value) return '<p style="color:#94a3b8">等待分析...</p>';
+  
+  // 使用 marked 将 Markdown 转为 HTML
+  let html = marked(coachFeedback.value);
+  
+  // 如果你想彻底去掉所有符号且不使用 HTML 标签（不推荐，会失去排版）
+  // 可以用正则去掉，但建议保留 HTML 结构，通过 CSS 隐藏列表符号
+  return html;
+});
+
+// --- 方法函数 ---
+
 // 选择文件
 const selectFile = () => {
   uni.chooseVideo({
     sourceType: ['album', 'camera'],
-    maxDuration: 600, // 最大10分钟
+    maxDuration: 600, 
     camera: 'back',
     success: (res) => {
       selectedFile.value = {
@@ -306,10 +328,7 @@ const selectFile = () => {
     },
     fail: (error) => {
       console.error('选择视频失败:', error)
-      uni.showToast({
-        title: '选择文件失败',
-        icon: 'none'
-      })
+      uni.showToast({ title: '选择文件失败', icon: 'none' })
     }
   })
 }
@@ -318,248 +337,210 @@ const selectFile = () => {
 const startUpload = async () => {
   uploading.value = true
   uploadProgress.value = 0
-
   try {
     const startTime = Date.now()
-    let lastProgress = 0
-
-    // 调用上传 API
     const result = await analysisAPI.startAnalysis(
       selectedFile.value.path,
       {},
       (progress) => {
         uploadProgress.value = progress
-
-        // 计算上传速度
-        const elapsed = (Date.now() - startTime) / 1000 // 秒
+        const elapsed = (Date.now() - startTime) / 1000
         const uploaded = (selectedFile.value.size * progress) / 100
-        const speed = uploaded / elapsed / 1024 / 1024 // MB/s
+        const speed = uploaded / elapsed / 1024 / 1024
         uploadSpeed.value = `${speed.toFixed(2)} MB/s`
-
-        // 更新状态文本
-        if (progress < 100) {
-          uploadStatusText.value = `正在上传... ${progress.toFixed(1)}%`
-        } else {
-          uploadStatusText.value = '上传完成，开始分析...'
-        }
-
-        lastProgress = progress
+        uploadStatusText.value = progress < 100 ? `正在上传... ${progress.toFixed(1)}%` : '上传完成，开始分析...'
       }
     )
-
-    // 上传完成，存储分析结果并开始分析
     analysisResult.value = result
     uploading.value = false
     startAnalysis()
-
   } catch (error) {
     console.error('上传失败:', error)
     uploading.value = false
-    uni.showToast({
-      title: '上传失败，请重试',
-      icon: 'none'
-    })
+    uni.showToast({ title: '上传失败，请重试', icon: 'none' })
   }
 }
 
-// 开始分析 - 现在直接从上传结果获取分析数据
+// 开始分析
 const startAnalysis = async () => {
   analyzing.value = true
   currentStep.value = 0
+  const sessionId = analysisResult.value.session_id 
 
   try {
-    // 模拟分析进度更新
-    const updateProgress = (step) => {
-      currentStep.value = step
+    let isDone = false
+    while (!isDone) {
+      const statusRes = await analysisAPI.getStatus(sessionId) 
+      if (statusRes.status === 'COMPLETED') {
+        analysisResult.value = statusRes.result 
+        isDone = true
+      } else if (statusRes.status === 'FAILED') {
+        throw new Error('后端处理失败')
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        if (currentStep.value < 4) currentStep.value++
+      }
     }
-
-    // 模拟分析过程
-    updateProgress(1)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    updateProgress(2)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    updateProgress(3)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // 分析完成，调用显示结果函数
     analyzing.value = false
     showResults(analysisResult.value)
-
   } catch (error) {
     console.error('分析失败:', error)
     analyzing.value = false
-    uni.showToast({
-      title: '分析失败',
-      icon: 'none'
-    })
+    uni.showToast({ title: '分析失败', icon: 'none' })
   }
 }
 
 // 显示分析结果
 const showResults = async (result) => {
-  // 设置基础信息
-  videoUrl.value = selectedFile.value.path
-  analysisDate.value = new Date().toLocaleString('zh-CN')
-  overallScore.value = 85 // 默认评分，后续可从结果中提取
-
-  // 详细指标
-  detailedMetrics.value = [
-    { id: 1, name: '姿态标准度', score: 88 },
-    { id: 2, name: '动作流畅度', score: 82 },
-    { id: 3, name: '速度控制', score: 86 },
-    { id: 4, name: '力量输出', score: 84 },
-    { id: 5, name: '精准度', score: 90 }
-  ]
-
-  // 检测到的动作 - 使用后端返回的分析数据
-  const backendActions = result.analysis_data?.detected_actions || []
-  detectedActions.value = backendActions.map((action, index) => ({
-    id: index + 1,
-    name: action.action_type || '未知动作',
-    icon: '→',
-    color: 'rgba(59, 130, 246, 0.2)',
-    timeStart: action.timestamp_sec ? formatTime(action.timestamp_sec) : '00:00',
-    timeEnd: action.timestamp_sec ? formatTime(action.timestamp_sec + action.duration_sec) : '00:00',
-    score: action.score || 85
-  })) || [
-    {
-      id: 1,
-      name: '直刺',
-      icon: '→',
-      color: 'rgba(59, 130, 246, 0.2)',
-      timeStart: '00:12',
-      timeEnd: '00:18',
-      score: 92
-    },
-    {
-      id: 2,
-      name: '防守',
-      icon: '🛡️',
-      color: 'rgba(16, 185, 129, 0.2)',
-      timeStart: '00:25',
-      timeEnd: '00:32',
-      score: 85
-    },
-    {
-      id: 3,
-      name: '反击',
-      icon: '⚡',
-      color: 'rgba(245, 158, 11, 0.2)',
-      timeStart: '00:40',
-      timeEnd: '00:48',
-      score: 88
+  console.log('--- 收到后端原始数据 ---', result);
+  
+  // 1. 兼容性数据源：优先取 analysis_data，如果没有，则认为 result 本身就是数据体
+  const data = result.analysis_data || result; 
+  
+  // 打印到控制台，重点看这两个字段
+    console.log('检查完整数据结构:', data);
+    console.log('检查 metrics:', data.metrics);
+    console.log('检查 actions:', data.detected_actions || data.actions);
+  
+    if (!data.metrics && (!data.detected_actions || data.detected_actions.length === 0)) {
+      uni.showToast({
+        title: '后端未检测到有效动作数据',
+        icon: 'none',
+        duration: 3000
+      });
     }
-  ]
-
-  // 获取 AI 教练反馈
-  try {
-    const feedback = await coachAPI.getFeedback({
-      type: 'fencing',
-      score: overallScore.value,
-      metrics: {
-        posture: detailedMetrics.value[0].score,
-        fluency: detailedMetrics.value[1].score,
-        speed: detailedMetrics.value[2].score
-      }
-    })
-
-    coachFeedback.value = feedback.feedback || '您的表现非常出色！继续保持这样的训练强度。'
-    suggestions.value = feedback.suggestions || [
-      '注意保持步法的稳定性，避免重心过度前倾',
-      '出剑时手腕力度可以更加集中',
-      '建议增加柔韧性训练，提高动作幅度'
-    ]
-  } catch (error) {
-    console.error('获取反馈失败:', error)
-    coachFeedback.value = '您的表现非常出色！继续保持这样的训练强度。'
-    suggestions.value = [
-      '注意保持步法的稳定性',
-      '出剑时手腕力度可以更加集中',
-      '建议增加柔韧性训练'
-    ]
+  
+  // 2. 视频地址处理
+  const baseUrl = 'http://192.168.149.139:5001'; 
+  let rawPath = result.report_urls?.processed_video || data.processed_video || '';
+  if (rawPath) {
+    videoUrl.value = rawPath.startsWith('http') ? rawPath : baseUrl + (rawPath.startsWith('/') ? '' : '/') + rawPath;
   }
 
-  analysisCompleted.value = true
+  // 3. 总体评分
+  overallScore.value = data.overall_score || 85;
+
+  // 4. 详细指标：尝试匹配 metrics 或 scores 字段
+  const m = data.metrics || data.scores || {};
+  detailedMetrics.value = [
+    { id: 1, name: '姿态标准度', score: m.posture || m.posture_score || 80 },
+    { id: 2, name: '动作流畅度', score: m.fluency || m.fluency_score || 80 },
+    { id: 3, name: '速度控制', score: m.speed || m.speed_score || 80 },
+    { id: 4, name: '力量输出', score: m.power || m.power_score || 80 },
+    { id: 5, name: '精准度', score: m.accuracy || m.accuracy_score || 80 }
+  ];
+
+  // 5. 检测动作：尝试匹配 detected_actions 或 actions 字段
+  const rawActions = data.detected_actions || data.actions || data.action_list || [];
+  
+  if (rawActions.length > 0) {
+      detectedActions.value = rawActions.map((action, index) => {
+		  //打印单条数据
+		  console.log(`正在转换第 ${index} 个动作:`, action);
+          // 这里的属性名必须跟后端完全一致，请核对：action_type 还是 label？
+          return {
+            id: action.id || (index + 1),
+            // --- 核心修复：增加对 action.type 的读取 ---
+            name: action.type || action.action_type || action.label || '未知动作', 
+            icon: (action.type === '直刺' || action.action_type === '直刺') ? '⚔️' : '🛡️',
+            color: 'rgba(59, 130, 246, 0.1)',
+                         
+            // 兼容性处理时间字段
+            // 后端传的是 timestamp_sec (开始时间)
+            timeStart: formatTime(action.timestamp_sec || 0),
+            // 如果后端没有传持续时间，我们给个默认显示
+            timeEnd: action.metrics?.["动作时长(秒)"] ? 
+                    formatTime((action.timestamp_sec || 0) + parseFloat(action.metrics["动作时长(秒)"])) : 
+                    action.timestamp_str || '进行中',
+                         
+            score: parseFloat(action.score) || 0
+          };
+      });
+      console.log("转换后的动作列表:", detectedActions.value);
+  } else {
+      console.warn("后端返回的动作数组为空");
+  }
+
+  // 触发 AI 反馈
+  fetchAiCoachFeedback(data);
+  analysisCompleted.value = true;
+};
+
+// 获取 AI 反馈的具体实现
+const fetchAiCoachFeedback = async (result) => {
+  isAiLoading.value = true;
+  try {
+    const aiRes = await uni.request({
+      url: 'http://127.0.0.1:5001/api/get_coach_feedback',
+      method: 'POST',
+      data: {
+        type: "击剑技术动作",
+        score: overallScore.value,
+        metrics: result.analysis_data?.metrics || {}
+      }
+    });
+    
+    if (aiRes.data && aiRes.data.feedback) {
+      coachFeedback.value = aiRes.data.feedback;
+      suggestions.value = aiRes.data.suggestions || [];
+    }
+  } catch (e) {
+    console.error("AI 接口调用失败", e);
+    coachFeedback.value = '表现不错！建议出剑更加果断。';
+    suggestions.value = ['注意保持步法的稳定性'];
+  } finally {
+    isAiLoading.value = false;
+  }
 }
+
+// 视频错误处理
+const onVideoError = (e) => {
+  uni.showModal({
+    title: '播放失败提示',
+    content: '地址：' + videoUrl.value + '\n错误：' + e.detail.errMsg,
+    showCancel: false
+  });
+};
 
 // 工具函数
-// 格式化时间（秒 → MM:SS）
 const formatTime = (seconds) => {
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-}
+    if (!seconds && seconds !== 0) return '00:00';
+    const s = Math.floor(seconds);
+    const mins = Math.floor(s / 60).toString().padStart(2, '0');
+    const secs = (s % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+};
 
-const getCircleStyle = (score) => {
-  return getCircleProgressStyle(score)
-}
+const getCircleStyle = (score) => getCircleProgressStyle(score)
 
 // 操作函数
 const viewAnalysisDetail = (id) => {
-  uni.navigateTo({
-    url: `/pages/analysis/detail?id=${id}`
-  })
+  uni.navigateTo({ url: `/pages/analysis/detail?id=${id}` })
 }
 
 const shareResults = () => {
-  try {
-    // 检查当前环境是否支持showShareMenu功能
-    if (typeof uni.showShareMenu === 'function') {
-      uni.showShareMenu({
-        withShareTicket: true,
-        success: () => {
-          console.log('分享成功')
-        },
-        fail: (error) => {
-          console.error('分享失败:', error)
-          uni.showToast({
-            title: '分享功能开发中',
-            icon: 'none'
-          })
-        }
-      })
-    } else {
-      console.warn('当前环境不支持showShareMenu功能')
-      uni.showToast({
-        title: '当前环境不支持分享功能',
-        icon: 'none'
-      })
-    }
-  } catch (error) {
-    console.error('调用分享功能失败:', error)
-    uni.showToast({
-      title: '分享功能开发中',
-      icon: 'none'
+  if (typeof uni.showShareMenu === 'function') {
+    uni.showShareMenu({
+      withShareTicket: true,
+      fail: () => uni.showToast({ title: '分享功能开发中', icon: 'none' })
     })
+  } else {
+    uni.showToast({ title: '当前环境不支持分享', icon: 'none' })
   }
 }
 
 const downloadReport = async () => {
-  try {
-    uni.showLoading({ title: '生成报告中...' })
-
-    // 生成报告 PDF 或图片
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    uni.hideLoading()
-    uni.showToast({
-      title: '报告已保存到相册',
-      icon: 'success'
-    })
-  } catch (error) {
-    uni.hideLoading()
-    console.error('下载失败:', error)
-    uni.showToast({
-      title: '下载失败',
-      icon: 'none'
-    })
-  }
+  uni.showLoading({ title: '生成报告中...' })
+  await new Promise(resolve => setTimeout(resolve, 2000))
+  uni.hideLoading()
+  uni.showToast({ title: '报告已保存到相册', icon: 'success' })
 }
 
 const resetAnalysis = () => {
   analysisCompleted.value = false
   selectedFile.value = null
   overallScore.value = 0
+  coachFeedback.value = ""
 }
 </script>
 
@@ -872,6 +853,54 @@ const resetAnalysis = () => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.markdown-display :deep(h1), 
+.markdown-display :deep(h2), 
+.markdown-display :deep(h3) {
+  color: #3b82f6;
+  font-size: 30rpx;
+  font-weight: bold;
+  margin: 20rpx 0 10rpx 0;
+  display: block;
+}
+
+.markdown-display :deep(p) {
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #cbd5e1;
+  margin-bottom: 12rpx;
+}
+
+/* 针对列表符号的去除方案 */
+.markdown-display :deep(ul) {
+  padding-left: 0; // 去除缩进
+  list-style-type: none; // 彻底去除 - 或 * 渲染出的圆点
+}
+
+.markdown-display :deep(li) {
+  font-size: 26rpx;
+  color: #cbd5e1;
+  position: relative;
+  padding-left: 20rpx;
+  margin-bottom: 8rpx;
+  
+  // 用一个小蓝方块代替传统的杠或点
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 14rpx;
+    width: 8rpx;
+    height: 8rpx;
+    background: #3b82f6;
+    border-radius: 2rpx;
+  }
+}
+
+.markdown-display :deep(strong) {
+  color: #fbbf24; // 加粗文字用金色突出
+  font-weight: bold;
 }
 
 .score-header {

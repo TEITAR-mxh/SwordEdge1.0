@@ -12,9 +12,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
-
+import logging
 from ultralytics import YOLO
-
+if not hasattr(np, 'Inf'):
+    np.Inf = np.inf
+if not hasattr(np, 'float'):
+    np.float = float
 # 全局模型实例，避免重复加载
 _pose_model = None
 
@@ -135,21 +138,29 @@ def analyze_single_frame(frame):
 
         # 计算简单的姿态评分
         score = calculate_realtime_score(keypoints_xy, keypoints_conf)
+		# 检测当前动作类型
+        try:
+            action_result = detect_action_type(keypoints_xy)
+        except:
+            action_result = {"name": "分析中...", "confidence": 0.5}
+        print(f"DEBUG - 动作识别结果: {action_result}")
+        logging.debug("DEBUG - 动作识别结果: %s", action_result)
+        logging.info("INFO - 动作类型识别：%s", action_result)
 
-        # 检测当前动作类型
-        action_type = detect_action_type(keypoints_xy)
-
-        # 计算姿态指标
+				# 3. 计算指标
         posture_metrics = calculate_posture_metrics(keypoints_xy)
-
-        # 确保所有数值都是Python原生类型（可JSON序列化）
+        
+                # 4. 统一打包返回 (严格对应前端日志里看到的字段名)
         return {
             "success": True,
+            "score": float(score),
+            "action": {
+                    "name": action_result.get("name", "识别中..."),
+                    "confidence": float(action_result.get("confidence", 0.0))
+                },  # 确保包含这个字段！
+            "metrics": {k: float(v) for k, v in posture_metrics.items()}, # 改为 metrics 对应前端
             "keypoints": keypoints_data,
-            "score": float(score),  # 转换为Python float
-            "action_type": str(action_type),  # 确保是字符串
-            "person_detected": True,
-            "posture_metrics": {k: float(v) for k, v in posture_metrics.items()}  # 转换所有值为Python float
+            "fps": 30 
         }
 
     except Exception as e:
@@ -382,16 +393,17 @@ def calculate_posture_metrics(keypoints):
             '整体平衡': 0.0
         }
 
-def detect_action_type(keypoints):
-    """
-    检测当前击剑动作类型
 
-    基于姿态关键点分析识别以下动作：
-    - 进攻直刺：手臂伸展 + 前腿弯曲 + 重心前移
-    - 准备姿势：标准击剑站姿
-    - 防守后撤：重心后移
-    - 格挡姿势：手臂抬起
+# --- 在函数外部定义状态记录器 ---
+last_confirmed_action = "🎭 动态调整" # 最终确定的动作
+pending_action = None               # 正在观察的动作
+action_confirm_count = 0            # 动作连续出现的次数
+CONFIRM_THRESHOLD = 3               # 阈值：连续 3 帧识别一致才更新（根据FPS调整
+def detect_action_type(keypoints, prev_action=None):
     """
+    检测当前击剑动作类型，并返回动作类型和置信度
+    """
+    global last_detected_action, pending_action, action_confirm_count
     try:
         # 提取关键点
         nose = keypoints[0]
@@ -402,54 +414,56 @@ def detect_action_type(keypoints):
 
         # 检查关键点有效性
         if any(np.isnan(p).any() for p in [right_shoulder, right_wrist, right_hip]):
-            return "姿态识别中..."
+            return {"name": "姿态识别中...", "confidence": 0.0}
 
-        # 1. 计算手臂伸展度
+        # 计算手臂伸展度
         arm_extension = np.linalg.norm(right_wrist - right_shoulder)
         arm_angle = calculate_angle(right_shoulder, right_elbow, right_wrist) if not np.isnan(right_elbow).any() else None
 
-        # 2. 计算腿部姿态
+        # 计算腿部姿态
         right_knee_angle = calculate_angle(right_hip, right_knee, right_ankle) \
             if not any(np.isnan(p).any() for p in [right_knee, right_ankle]) else None
         left_knee_angle = calculate_angle(left_hip, left_knee, left_ankle) \
             if not any(np.isnan(p).any() for p in [left_hip, left_knee, left_ankle]) else None
 
-        # 3. 计算重心位置 (鼻子相对于髋部中心的位置)
+        # 计算重心位置
         hip_center = (left_hip + right_hip) / 2
-        forward_lean = nose[0] - hip_center[0]  # 正值表示前倾，负值表示后倾
-
-        # 动作识别逻辑
-        # 进攻直刺：手臂伸展 + 前膝弯曲 + 重心前移
+        forward_lean = nose[0] - hip_center[0]
+        # 2. 原始判定逻辑 (判定结果暂存到 raw_name)
+        raw_name = "🎭 动态调整"
+        confidence = 0.6
+        
         if arm_angle and arm_angle > 160 and arm_extension > 120:
             if right_knee_angle and 80 <= right_knee_angle <= 130 and forward_lean > 20:
-                return "🗡️ 进攻直刺"
+                raw_name, confidence = "🗡️ 进攻直刺", 0.95
             else:
-                return "🎯 准备出击"
-
-        # 防守后撤：重心后移
-        if forward_lean < -30:
-            return "🛡️ 防守后撤"
-
-        # 格挡姿势：手腕高于肩膀
-        if right_wrist[1] < right_shoulder[1] - 30:
-            return "⚔️ 格挡姿势"
-
-        # 弓步姿势：前腿弯曲但手臂未伸展
-        if right_knee_angle and 80 <= right_knee_angle <= 130:
-            if left_knee_angle and left_knee_angle > 160:
-                return "🏹 弓步姿态"
-
-        # 标准准备姿势
-        if arm_extension < 120 and abs(forward_lean) < 30:
-            return "⚡ 准备姿势"
-
-        # 移动中
-        return "🎭 动态调整"
-
+                raw_name, confidence = "🎯 准备出击", 0.8
+        elif forward_lean < -30:
+            raw_name, confidence = "🛡️ 防守后撤", 0.85
+        elif right_wrist[1] < right_shoulder[1] - 30:
+            raw_name, confidence = "⚔️ 格挡姿势", 0.9
+        elif arm_extension < 120 and abs(forward_lean) < 30:
+            raw_name, confidence = "⚡ 准备姿势", 0.9
+        
+        # --- 核心优化：平滑消抖逻辑 ---
+        # 如果当前识别到的动作与“待定动作”一致，计数器加1
+        if raw_name == pending_action:
+            action_confirm_count += 1
+        else:
+            # 如果动作变了，重新开始计数
+            pending_action = raw_name
+            action_confirm_count = 1
+        
+        # 只有当某个动作连续出现 CONFIRM_THRESHOLD 次，才真正更新最终状态
+        if action_confirm_count >= CONFIRM_THRESHOLD:
+            last_confirmed_action = pending_action
+        
+        return {"name": last_confirmed_action, "confidence": confidence}
+        
     except Exception as e:
         print(f"动作识别出错: {e}")
-        return "未知动作"
-
+        return {"name": last_confirmed_action, "confidence": 0.0}
+		
 def get_chinese_font():
     font_paths = [
         'C:/Windows/Fonts/msyh.ttc',  # 微软雅黑
@@ -482,22 +496,48 @@ def calculate_action_score(metrics, video_width):
         elif lunge_speed > video_width * 0.15: base_score += 1.0
     return round(max(0, min(10.0, base_score)), 1)
 
-def create_skeleton_video_yolo(input_video_path, output_video_path):
-    try: model = YOLO('yolov8n-pose.pt')
-    except Exception as e: print(f"错误：加载YOLOv8模型失败: {e}"); return False
-    cap = cv2.VideoCapture(input_video_path)
-    if not cap.isOpened(): print(f"错误: 无法打开视频文件 {input_video_path}"); return False
-    w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS); fps = fps if fps and fps > 0 else 25
-    fourcc = cv2.VideoWriter_fourcc(*'avc1'); writer = cv2.VideoWriter(output_video_path, fourcc, fps, (w, h))
-    if not writer.isOpened(): print("错误: 无法创建视频写入器。"); cap.release(); return False
-    print("YOLOv8姿态估计开始...")
-    results_generator = model(input_video_path, stream=True, verbose=False)
-    for r in results_generator:
-        annotated_frame = r.plot()
-        writer.write(annotated_frame)
-    print(f"YOLOv8骨架视频已生成: {output_video_path}"); cap.release(); writer.release(); return True
+try:
+    model = YOLO('yolov8n-pose.pt') 
+    logging.info("YOLOv8-pose model loaded successfully.")
+except Exception as e:
+    logging.error(f"FATAL ERROR: Failed to load YOLO model: {e}")
+    model = None
 
+def create_skeleton_video_yolo(input_video_path, output_video_path):
+    output_dir = os.path.dirname(output_video_path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        logging.info(f"Created directory: {output_dir}")
+
+    if model is None:
+        logging.error("Model not loaded, cannot process video.")
+        return False
+        
+    cap = cv2.VideoCapture(input_video_path)
+    if not cap.isOpened():
+        logging.error(f"Could not open video: {input_video_path}")
+        return False
+
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    
+    fourcc = cv2.VideoWriter_fourcc(*'H264') 
+    writer = cv2.VideoWriter(output_video_path, fourcc, fps, (w, h))
+
+    try:
+        results_generator = model(input_video_path, stream=True, verbose=False)
+        for r in results_generator:
+            annotated_frame = r.plot()
+            writer.write(annotated_frame)
+        return True
+    except Exception as e:
+        logging.error(f"Error during video processing: {e}")
+        return False
+    finally:
+        cap.release()
+        writer.release()
+  
 def generate_chart_image(chart_type, data, output_path):
     plt.style.use('dark_background'); fig, ax = plt.subplots(figsize=(8, 6))
     font_props = {'fontproperties': chinese_font} if chinese_font else {}
@@ -525,9 +565,18 @@ def generate_html_report(data, output_dir):
 
 
 def run_full_analysis(video_path: str, base_output_dir: str, session_id: str) -> dict:
-    output_dir = os.path.join(base_output_dir, session_id); os.makedirs(output_dir, exist_ok=True)
+    output_dir = os.path.join(base_output_dir, session_id);
+    os.makedirs(output_dir, exist_ok=True)
+    processed_video_path = os.path.join(output_dir, "processed_video.mp4")
+    
     try: model = YOLO('yolov8n-pose.pt')
-    except Exception as e: return {"error": f"加载YOLOv8模型失败: {e}"}
+    except Exception as e: return {"error": f"加载YOLOv8模型失败: {e}"}	
+    # --- 核心修复：调用视频生成函数 ---
+    print(f"正在生成骨架视频: {processed_video_path}")
+    video_success = create_skeleton_video_yolo(video_path, processed_video_path)
+    if not video_success:
+        print("警告: 视频渲染失败")
+	
     
     print("YOLOv8原生视频处理开始...")
     results_generator = model(video_path, stream=True, verbose=False)
@@ -540,13 +589,14 @@ def run_full_analysis(video_path: str, base_output_dir: str, session_id: str) ->
     # ▼▼▼ 核心算法升级：调整阈值和增加最小时长 ▼▼▼
     # 将阈值从相对于视频宽度(w)的比例，改为一个更通用的绝对值
     # 这些值是在假设运动员在画面中占有一定比例的情况下设定的，更具普适性
-    VEL_START = 10.0     # 降低启动速度阈值，使其更灵敏
-    VEL_END = 100.0       # 降低结束速度阈值
-    MIN_ACTION_DURATION = 0.01 # 动作的最短持续时间（秒），过滤掉无效的抖动
+    VEL_START = 30.0     # 降低启动速度阈值，使其更灵敏
+    VEL_END = 25.0       # 降低结束速度阈值
+    MIN_ACTION_DURATION = 0.4 # 动作的最短持续时间（秒），过滤掉无效的抖动
     # ▲▲▲ 升级结束 ▲▲▲
 
     idle_frame_counter = 0
-    IDLE_CONFIRMATION_FRAMES = max(3, int(fps / 5))
+    IDLE_CONFIRMATION_FRAMES = max(12, int(fps / 2))
+    last_action_end_time = -1.0  # 用于记录上一个动作的结束时间，防止重复输出
 
     for data in all_frame_keypoints:
         keypoints_history.append(data['keypoints']);
@@ -572,18 +622,26 @@ def run_full_analysis(video_path: str, base_output_dir: str, session_id: str) ->
             
             if idle_frame_counter >= IDLE_CONFIRMATION_FRAMES:
                 state = "IDLE";
-                
-                action_buffer = action_buffer[:-IDLE_CONFIRMATION_FRAMES]
-                if not action_buffer: continue
-                
-                start_data, end_data = action_buffer[0], action_buffer[-1]
+                valid_action_buffer = action_buffer[:-IDLE_CONFIRMATION_FRAMES]
+                action_buffer = []; idle_frame_counter = 0 # 立即重置，防止干扰下次循环
+                                
+                if not valid_action_buffer: continue
+                                
+                # 2. 提取开始和结束帧数据
+                start_data = valid_action_buffer[0]
+                end_data = valid_action_buffer[-1]
+                                
+                # 3.在此处定义 current_start_time 和 duration
+                current_start_time = start_data['frame_idx'] / fps
                 duration = (end_data['frame_idx'] - start_data['frame_idx']) / fps
-                
-                
+                                
+                 # 4. 【去重过滤】时长太短或距离上个动作太近则跳过
                 if duration < MIN_ACTION_DURATION:
-                    action_buffer = []; idle_frame_counter = 0
                     continue
-                
+                                
+                # 如果当前开始时间距离上个动作结束时间少于 1.0 秒，跳过
+                if last_action_end_time > 0 and (current_start_time - last_action_end_time) < 1.0:
+                    continue
 
                 arm_angles, knee_angles, hip_positions = [], [], []
                 for d in action_buffer:
@@ -597,7 +655,7 @@ def run_full_analysis(video_path: str, base_output_dir: str, session_id: str) ->
                 min_knee_bend = min(valid_knee_angles) if valid_knee_angles else None
                 
                 lunge_speed = np.linalg.norm(hip_positions[-1]-hip_positions[0])/duration if len(hip_positions)>1 and duration>0 else 0
-                
+                #action_type = "直刺" if (lunge_speed > 80.0 and max_arm_ext > 140) else "格挡/移动"
                 metrics = {"弓步速度(像素/秒)":f"{lunge_speed:.1f}", "最大手臂伸展(°)":f"{max_arm_ext:.1f}" if max_arm_ext else "N/A", "最小后膝角度(°)":f"{min_knee_bend:.1f}" if min_knee_bend else "N/A", "动作时长(秒)":f"{duration:.2f}"}
                 score = calculate_action_score(metrics, w)
                 action_type = "直刺" if lunge_speed > 60.0 else "格挡/移动"
@@ -628,4 +686,30 @@ def run_full_analysis(video_path: str, base_output_dir: str, session_id: str) ->
     generate_html_report(report_data, output_dir)
     
     detected_actions.sort(key=lambda x: x['timestamp_sec'])
-    return {"analysis_data": {"detected_actions": detected_actions, "summary_data": summary_data}, "report_session_id": session_id}
+    # 1. 计算前端需要的 metrics (取本次训练的雷达图平均分)
+    radar_vals = summary_data["radar"]["this_training"]
+    metrics_for_frontend = {
+        "posture": float(radar_vals[1]), # 对应“防守”或姿态
+        "fluency": float(radar_vals[4]), # 对应“变化与战术”
+        "speed": float(radar_vals[2]),   # 对应“速度”
+        "power": float(radar_vals[0]),   # 对应“进攻”
+        "accuracy": float(radar_vals[3]) # 对应“命中率”
+    }
+    
+    # 2. 计算一个综合评分
+    overall_score = float(round(sum(radar_vals) / len(radar_vals), 1))
+    
+    # 3. 确保返回的结构包含前端 showResults 函数里所有的 data.xxxx
+    return {
+        "message": "分析成功", # 加上这个，方便前端判断
+        "overall_score": overall_score,
+        "metrics": metrics_for_frontend,
+        "detected_actions": detected_actions,
+        "summary_data": summary_data,
+        "report_session_id": session_id,
+        # 如果你还有其他的 URL 逻辑，记得也带上
+        "report_urls": {
+            "processed_video": f"/reports/{session_id}/processed_video.mp4",
+            "html_report": f"/reports/{session_id}/report.html"
+        }
+	}

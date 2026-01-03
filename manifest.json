@@ -1,132 +1,129 @@
 {
-  "name": "Sword Edge",
-  "appid": "__UNI__SWORD_EDGE",
-  "description": "智能剑术训练分析与指导系统",
-  "versionName": "1.0.0",
-  "versionCode": "100",
-  "transformPx": false,
-  "app-plus": {
-    "usingComponents": true,
-    "nvueStyleCompiler": "uni-app",
-    "compilerVersion": 3,
-    "splashscreen": {
-      "alwaysShowBeforeRender": true,
-      "waiting": true,
-      "autoclose": true,
-      "delay": 0
-    },
-    "modules": {},
-    "distribute": {
-      "android": {
-        "permissions": [
-          "<uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\"/>",
-          "<uses-permission android:name=\"android.permission.MOUNT_UNMOUNT_FILESYSTEMS\"/>",
-          "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
-          "<uses-permission android:name=\"android.permission.READ_LOGS\"/>",
-          "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
-          "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
-          "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
-          "<uses-permission android:name=\"android.permission.CAMERA\"/>",
-          "<uses-permission android:name=\"android.permission.GET_ACCOUNTS\"/>",
-          "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
-          "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
-          "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
-          "<uses-permission android:name=\"android.permission.FLASHLIGHT\"/>",
-          "<uses-permission android:name=\"android.hardware.camera\"/>",
-          "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>"
-        ]
-      },
-      "ios": {},
-      "sdkConfigs": {}
-    }
-  },
-  "quickapp": {},
-  "mp-weixin": {
-    "appid": "",
-    "setting": {
-      "urlCheck": false,
-      "es6": true,
-      "postcss": true,
-      "minified": true,
-      "postcss": true,
-      "minifyWXSS": true
-    },
-    "usingComponents": true,
-    "optimization": {
-      "subPackages": true
-    },
-    "permission": {
-      "scope.userLocation": {
-        "desc": "您的位置信息将用于小程序位置接口的效果展示"
-      }
-    },
-    "requiredPrivateInfos": [
-      "getLocation"
-    ]
-  },
-  "mp-alipay": {
-    "usingComponents": true,
-    "component2": true
-  },
-  "mp-baidu": {
-    "usingComponents": true,
-    "appid": ""
-  },
-  "mp-toutiao": {
-    "usingComponents": true,
-    "appid": ""
-  },
-  "h5": {
-    "devServer": {
-      "port": 8080,
-      "https": false,
-      "disableHostCheck": true,
-      "proxy": {
-        "/api": {
-          "target": "http://localhost:5000",
-          "changeOrigin": true,
-          "secure": false,
-          "pathRewrite": {
-            "^/api": ""
-          }
+    "name" : "Sword Edge",
+    "appid" : "__UNI__SWORD_EDGE",
+    "description" : "智能剑术训练分析与指导系统",
+    "versionName" : "1.0.0",
+    "versionCode" : "100",
+    "transformPx" : false,
+    "app-plus" : {
+        "usingComponents" : true,
+        "nvueStyleCompiler" : "uni-app",
+        "compilerVersion" : 3,
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
         },
-        "/analyze_video": {
-          "target": "http://localhost:5000",
-          "changeOrigin": true,
-          "secure": false
-        },
-        "/generate_skeleton_video": {
-          "target": "http://localhost:5000",
-          "changeOrigin": true,
-          "secure": false
-        },
-        "/get_coach_feedback": {
-          "target": "http://localhost:5000",
-          "changeOrigin": true,
-          "secure": false
-        },
-        "/analyze_frame": {
-          "target": "http://localhost:5000",
-          "changeOrigin": true,
-          "secure": false
+        "modules" : {},
+        "distribute" : {
+            "android" : {
+                "permissions" : [
+                    "<uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.MOUNT_UNMOUNT_FILESYSTEMS\"/>",
+                    "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_LOGS\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+                    "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                    "<uses-permission android:name=\"android.permission.GET_ACCOUNTS\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
+                    "<uses-permission android:name=\"android.permission.FLASHLIGHT\"/>",
+                    "<uses-permission android:name=\"android.hardware.camera\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>"
+                ]
+            },
+            "ios" : {},
+            "sdkConfigs" : {}
         }
-      }
     },
-    "title": "Sword Edge",
-    "template": "index.html",
-    "router": {
-      "mode": "hash",
-      "base": "./"
+    "quickapp" : {},
+    "mp-weixin" : {
+        "appid" : "",
+        "setting" : {
+            "urlCheck" : false,
+            "es6" : true,
+            "postcss" : true,
+            "minified" : true,
+            "minifyWXSS" : true
+        },
+        "usingComponents" : true,
+        "optimization" : {
+            "subPackages" : true
+        },
+        "permission" : {
+            "scope.userLocation" : {
+                "desc" : "您的位置信息将用于小程序位置接口的效果展示"
+            }
+        },
+        "requiredPrivateInfos" : [ "getLocation" ]
     },
-    "optimization": {
-      "treeShaking": {
-        "enable": true
-      }
+    "mp-alipay" : {
+        "usingComponents" : true,
+        "component2" : true
     },
-    "publicPath": "./",
-    "sdkConfigs": {
-      "maps": {}
-    }
-  },
-  "vueVersion": "3"
+    "mp-baidu" : {
+        "usingComponents" : true,
+        "appid" : ""
+    },
+    "mp-toutiao" : {
+        "usingComponents" : true,
+        "appid" : ""
+    },
+    "h5" : {
+        "devServer" : {
+            "port" : 8080,
+            "https" : false,
+            "disableHostCheck" : true,
+            "proxy" : {
+                "/api" : {
+                    "target" : "http://localhost:5000",
+                    "changeOrigin" : true,
+                    "secure" : false,
+                    "pathRewrite" : {
+                        "^/api" : ""
+                    }
+                },
+                "/analyze_video" : {
+                    "target" : "http://localhost:5000",
+                    "changeOrigin" : true,
+                    "secure" : false
+                },
+                "/generate_skeleton_video" : {
+                    "target" : "http://localhost:5000",
+                    "changeOrigin" : true,
+                    "secure" : false
+                },
+                "/get_coach_feedback" : {
+                    "target" : "http://localhost:5000",
+                    "changeOrigin" : true,
+                    "secure" : false
+                },
+                "/analyze_frame" : {
+                    "target" : "http://localhost:5000",
+                    "changeOrigin" : true,
+                    "secure" : false
+                }
+            }
+        },
+        "title" : "Sword Edge",
+        "template" : "index.html",
+        "router" : {
+            "mode" : "hash",
+            "base" : "./"
+        },
+        "optimization" : {
+            "treeShaking" : {
+                "enable" : true
+            }
+        },
+        "publicPath" : "./",
+        "sdkConfigs" : {
+            "maps" : {}
+        }
+    },
+    "vueVersion" : "3"
 }

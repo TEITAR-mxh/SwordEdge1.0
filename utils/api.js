@@ -34,6 +34,13 @@ export const analysisAPI = {
     return uploadFile('/api/start_analysis', filePath, formData, onProgress)
   },
 
+/**
+   * 获取分析任务状态
+   * @param {String} sessionId - 任务会话ID
+   */
+  getStatus: (sessionId) => {
+    return get(`/api/analysis_status/${sessionId}`)
+  },
   /**
    * 生成骨架检测视频
    * @param {String} sessionId - 任务会话ID
