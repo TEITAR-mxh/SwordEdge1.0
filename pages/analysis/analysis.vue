@@ -389,7 +389,15 @@ const startAnalysis = async () => {
     uni.showToast({ title: '分析失败', icon: 'none' })
   }
 }
-
+const getBaseUrl = () => {
+  // 如果是开发环境且需要手动指定，可以保留逻辑；否则动态获取
+  // if (process.env.NODE_ENV === 'development') {
+  //   // 这里可以根据需要决定是否写死，或者从环境变量读取
+  //   return 'http://192.168.149.139:5001'; 
+  // }
+  // 动态获取当前访问的域名和协议 (例如 http://192.168.1.5:5001)
+  return `${window.location.protocol}//${window.location.hostname}:5001`;
+};
 // 显示分析结果
 const showResults = async (result) => {
   console.log('--- 收到后端原始数据 ---', result);
@@ -411,7 +419,7 @@ const showResults = async (result) => {
     }
   
   // 2. 视频地址处理
-  const baseUrl = 'http://192.168.149.139:5001'; 
+  const baseUrl = getBaseUrl(); 
   let rawPath = result.report_urls?.processed_video || data.processed_video || '';
   if (rawPath) {
     videoUrl.value = rawPath.startsWith('http') ? rawPath : baseUrl + (rawPath.startsWith('/') ? '' : '/') + rawPath;

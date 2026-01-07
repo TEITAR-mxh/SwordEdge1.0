@@ -425,7 +425,7 @@ const stopMonitoring = async () => {
       try { cameraVideo.value.pause() } catch(e){}
       try { cameraVideo.value.srcObject = null } catch(e){}
     }
-
+    clearSkeletonCanvas();
     // 断开 websocket
     if (wsClient) {
       try { wsClient.close() } catch(e){}
@@ -635,10 +635,22 @@ function drawSkeletonOverlay(video, keypoints) {
  * 辅助函数：清空画布
  */
 function clearSkeletonCanvas() {
-  const canvas = cameraCanvas.value?.$el || cameraCanvas.value;
-  if (canvas && typeof canvas.getContext === 'function') {
+  // 尝试多种方式获取 canvas 节点
+  let canvas = cameraCanvas.value?.$el;
+  if (canvas && canvas.tagName !== 'CANVAS') {
+    canvas = canvas.querySelector('canvas');
+  }
+  if (!canvas) {
+    canvas = document.querySelector('.camera-section canvas');
+  }
+
+  if (canvas) {
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (ctx) {
+      // 使用非常大的数值确保覆盖所有区域
+      ctx.clearRect(0, 0, canvas.width || 2000, canvas.height || 2000);
+      console.log('骨架画布已清空');
+    }
   }
 }
 function drawKeypoints(ctx, keypoints, width, height) {
