@@ -48,7 +48,3 @@ npm run dev:h5
 ```bash
 npm run build:h5
 ```
-
-项目结构和多端/条件编译说明等，详见仓库根目录的 `pages/`、`components/` 与 `utils/` 等目录，以及新增的详细说明文档 [docs/说明.docx](docs/%E8%AF%B4%E6%98%8E.docx)。
-
-如果需要我把说明导出为真实的 Word 二进制文件（.docx），我可以在本地生成并提交到仓库，请确认是否需要真正的 Word 格式，否则当前文档为 UTF-8 文本格式的 `.docx` 占位，内容完整且可直接复制。 
